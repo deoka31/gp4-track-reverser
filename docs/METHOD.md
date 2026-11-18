@@ -36,7 +36,7 @@ The tool:
 
 Where the fit would diverge (tight street circuits) a section with start values resets the state.
 
-For the 17 original tracks the result is delivered in `Rennlinien\S1CTnn.json` and used if the SHA-1 of the source file
+For the 17 original tracks the result is delivered in `racing_lines\S1CTnn.json` and used if the SHA-1 of the source file
 matches.
 
 ## Not stored in the track file

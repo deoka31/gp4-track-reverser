@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-GP4_InterlagosRueckwaerts_Quellcode.py
+reverse_core.py
 
 Dreht die Streckendatei des ORIGINAL-Interlagos (Circuits\\S1CT03.DAT, 2001)
 um, so dass in die andere Richtung gefahren wird.
 
 Aufruf:
-    python GP4_InterlagosRueckwaerts_Quellcode.py [Eingabe.DAT] [Ausgabe.DAT]
+    python reverse_core.py [Eingabe.DAT] [Ausgabe.DAT]
 
 Standard: Eingabe = ..\\Circuits\\S1CT03.DAT (nur gelesen),
           Ausgabe = Interlagos_Rueckwaerts\\S1CT03.DAT (neben diesem Skript).
@@ -133,7 +133,8 @@ def read_track(groups, ring):
         Wn[gi + 1], Wp[gi + 1], Bk[gi + 1] = b4[-1]['args'][1], b5[-1]['args'][1], ad[-1]['args'][1]
     if ring:
         if (Wn[n], Wp[n], Bk[n]) != (Wn[0], Wp[0], Bk[0]):
-            raise ValueError('Ring nicht geschlossen (Breite/Querneigung)')
+            # Mod tracks may jump at the start line (end-of-lap values differ from the start values)
+            T['end_wb'] = (Wn[n], Wp[n], Bk[n])
         Wn, Wp, Bk = Wn[:n], Wp[:n], Bk[:n]
     T['Wn'], T['Wp'], T['Bk'] = Wn, Wp, Bk
     # Begrenzungslinien (F5 = Endwerte an Punkt g+1, F4 = Startwerte an Punkt 0)
@@ -151,8 +152,8 @@ def read_track(groups, ring):
         T['F4'] = (neg, pos)
         if ring:
             if E[n] != (neg, pos):
-                raise ValueError('F4 und letztes F5 passen nicht zusammen')
-            E[0] = E[n]
+                T['E_end'] = E[n]        # mod tracks: edge lines jump at the start line
+            E[0] = (neg, pos)
     if ring:
         E = E[:n]
     T['E'] = E
@@ -190,6 +191,10 @@ def reverse_track_arrays(T, ring):
         R['Wn'] = [T['Wp'][Q(p)] for p in range(n)]
         R['Wp'] = [T['Wn'][Q(p)] for p in range(n)]
         R['Bk'] = [-T['Bk'][Q(p)] for p in range(n)]
+        if T.get('end_wb'):
+            ew = T['end_wb']
+            R['end_wb'] = (T['Wp'][0], T['Wn'][0], -T['Bk'][0])
+            R['Wn'][0], R['Wp'][0], R['Bk'][0] = ew[1], ew[0], -ew[2]
     else:
         Q = lambda p: n - 1 - p
         R['Wn'] = [T['Wp'][Q(p)] for p in range(n)] + [T['Wp'][0]]
@@ -246,7 +251,10 @@ def emit_groups(R, extra_first=None, ring=True, e8_items=None):
             if R.get('F4'):
                 items += [mk('F4', R['F4'][0]), mk('F4', R['F4'][1])]
         p1 = (j + 1) % n if ring else j + 1
-        items += [mk('B4', [1, R['Wn'][p1]]), mk('B5', [1, R['Wp'][p1]]), mk('AD', [1, R['Bk'][p1]])]
+        wnv, wpv, bkv = R['Wn'][p1], R['Wp'][p1], R['Bk'][p1]
+        if ring and j == n - 1 and R.get('end_wb'):
+            wnv, wpv, bkv = R['end_wb']
+        items += [mk('B4', [1, wnv]), mk('B5', [1, wpv]), mk('AD', [1, bkv])]
         e = R['E'][p1]
         if e is not None:
             items += [mk('F5', e[0]), mk('F5', e[1])]
@@ -304,7 +312,7 @@ def racing_pieces(rl, N):
         R0, step = info[si]
         pieces.append((p, cnt, R0 + j0 * step, step))
     if sum(c for _, c, _, _ in pieces) != N:
-        raise ValueError('Rennlinien-Aufteilung stimmt nicht')
+        raise ValueError('racing_lines-Aufteilung stimmt nicht')
     return pieces
 
 
@@ -352,7 +360,7 @@ def vn(a):                                   # Seiten-Vektor (rechts), gleiche K
 
 
 def line_geometry(T):
-    """Streckenwerte, die die Rennlinien-Berechnung des Spiels braucht
+    """Streckenwerte, die die racing_lines-Berechnung des Spiels braucht
     (racing_line_build.asm: Segment-Ursprung, Heading, Quer-Winkel)."""
     n = T['N']
     O = [(d32(*T['F6'][p][0:2]) / 256.0, d32(*T['F6'][p][4:6]) / 256.0) for p in range(n)]
@@ -363,7 +371,7 @@ def line_geometry(T):
 
 
 def sim_piece(g, rec, n, L, psi, R):
-    """Ein Rennlinien-Abschnitt ab Segment rec mit festem Startzustand (Quer-Lage L,
+    """Ein racing_lines-Abschnitt ab Segment rec mit festem Startzustand (Quer-Lage L,
     Winkel psi) und Radius R (0 = Gerade). Ergebnis: Quer-Lage an den n Querlinien
     rec+1 .. rec+n, oder None wenn die Berechnung nicht geht."""
     N = g['N']
@@ -744,7 +752,7 @@ def anchored_line(g, pieces, N, chain=True):
                 radii[k] = 0
                 fit = _fit_piece(g, a, n, 0, prev_end, next_L)
             if fit is None:
-                raise ValueError('Rennlinien-Abschnitt ab Segment %d (Laenge %d) laesst sich nicht auf der Strecke halten' % (a, n))
+                raise ValueError('racing_lines-Abschnitt ab Segment %d (Laenge %d) laesst sich nicht auf der Strecke halten' % (a, n))
             params[k] = (fit[0], fit[1])
             ends[k] = fit[2]
     secs, worst, jump = [], 0.0, 0.0
@@ -828,7 +836,8 @@ def reverse_json(j):
     RM = reverse_track_arrays(TM, True)
     RP = reverse_track_arrays(TP, False)
     if TM.get('F4'):
-        RM['F4'] = (swap_side(TM['F4'][1], True), swap_side(TM['F4'][0], False))
+        src = TM.get('E_end') or TM['F4']
+        RM['F4'] = (swap_side(src[1], True), swap_side(src[0], False))
 
     # Hauptstrecke: Sonderbefehle in Gruppe 0, Boxen-Anschluesse
     g0 = mg[0]['cmds']
@@ -857,14 +866,20 @@ def reverse_json(j):
     if ae:
         pit_first[0] = ae
     marks = {}
+    allmarks = set(c['cmd'] for g in pg for c in g['cmds'])
+    box = '88' if '88' in allmarks and '89' not in allmarks else '89'      # first pit box command
+    swap = dict(PIT_SWAP)
+    swap.pop('89'); swap['F1'] = box; swap[box] = 'F1'
     for gi, g in enumerate(pg):
         for c in g['cmds']:
-            if c['cmd'] in PIT_SWAP:
+            if c['cmd'] in swap:
                 marks[c['cmd']] = (gi + c['seg'], c['args'])
     for cmd, (tg, args) in marks.items():
-        ncmd = PIT_SWAP[cmd]
+        ncmd = swap[cmd]
         ng = NP - 2 - tg
-        a = list(marks['89'][1]) if ncmd == '89' else []
+        if ncmd == box:
+            ng += 1      # box area start: mirrored segment range [first box, F1) starts at NP-1-F1, so box k keeps its own place
+        a = list(marks[box][1]) if ncmd == box and box in marks else []
         pit_first.setdefault(ng, []).append(mk(ncmd, a))
     e8p = {}
     for gi, g in enumerate(pg):

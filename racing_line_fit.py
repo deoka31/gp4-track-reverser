@@ -1,12 +1,12 @@
-"""Rennlinien-Anpassung (CC-Linie) fuer umgekehrte GP4-Strecken.
+"""racing_lines-Anpassung (CC-Linie) fuer umgekehrte GP4-Strecken.
 Fuehrt die ECHTE Routine RacingLine_BuildIntoSegments (GP4.exe, 0x40abc1) in einem x86-Emulator (unicorn) aus
 und passt damit eine Kette von Abschnitten an die gespiegelte Originallinie an.
-Benoetigt: pip install unicorn, sowie GP4.exe. Ergebnisse fuer die 17 Originalstrecken liegen fertig in Rennlinien/."""
+Benoetigt: pip install unicorn, sowie GP4.exe. Ergebnisse fuer die 17 Originalstrecken liegen fertig in racing_lines/."""
 import sys, os, struct, json, math, time, copy
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 EXE = None
-Q = None        # Modul mit read_track/split_groups/reverse_json (GP4_InterlagosRueckwaerts_Quellcode)
+Q = None        # Modul mit read_track/split_groups/reverse_json (reverse_core)
 N = 884
 LASTP = 883
 

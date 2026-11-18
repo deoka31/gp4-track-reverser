@@ -181,10 +181,14 @@ def dump(raw):
     out['main_stream'] = read_cmd_stream(r, flags, state)
     out['racing_line'] = read_racing_line(r)
     pad = data[r.pos:hdr[6]]
+    if hdr[5] != 0 and r.pos <= hdr[5] < hdr[6]:
+        # Some mod files keep a leftover block here and point header +14h into it.
+        # The game never reads +14h (it parses the camera section right after the pit stream).
+        out['camera_ptr_in_padding'] = hdr[5] - r.pos
     out['padding'] = {'zeros': len(pad)} if not any(pad) else {'hex': pad.hex()}
     r.pos = hdr[6]
     out['pit_stream'] = read_cmd_stream(r, flags, state)
-    if r.pos != hdr[5]:
+    if r.pos != hdr[5] and 'camera_ptr_in_padding' not in out:
         raise ValueError('pit stream ends at %X, cameras at %X' % (r.pos, hdr[5]))
     cams = []
     while struct.unpack_from('<H', data, r.pos)[0] != 0xFFFF:
@@ -201,7 +205,10 @@ def dump(raw):
         r.pos = e + 1
     out['file_names'] = names
     if r.pos != len(data):
-        raise ValueError('%d bytes left at the end' % (len(data) - r.pos))
+        tail = data[r.pos:]
+        if not tail.startswith(b'#GP4INFO'):
+            raise ValueError('%d bytes left at the end' % (len(data) - r.pos))
+        out['trailer_hex'] = tail.hex()      # mod info text appended by track tools
     return out
 
 
@@ -256,6 +263,7 @@ def build(j):
         w16(d, *e)
     write_cmd_stream(d, j['main_stream'])
     write_racing_line(d, j['racing_line'])
+    pad_start = len(d)
     pad = j['padding']
     d += bytes(pad['zeros']) if 'zeros' in pad else bytes.fromhex(pad['hex'])
     pit_ofs = len(d)
@@ -271,7 +279,11 @@ def build(j):
     w16(d, len(j['file_names']))
     for n in j['file_names']:
         d += n.encode('latin-1') + b'\0'
+    if j.get('trailer_hex'):
+        d += bytes.fromhex(j['trailer_hex'])
     fh = j['file_header']
+    if 'camera_ptr_in_padding' in j:
+        cam_ofs = pad_start + j['camera_ptr_in_padding']
     head = struct.pack('<8I', int(fh['old_base'], 16), fh['dword_04'], len(d),
                        fh['dword_0c'], 0x110, cam_ofs, pit_ofs, 0)
     raw = head + bytes(d)
