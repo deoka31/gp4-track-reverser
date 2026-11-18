@@ -1,0 +1,60 @@
+name: Bug report
+description: Something is wrong on a reversed track or the tool fails
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Tool version
+      description: Output of `python umkehren.py --version`
+      placeholder: 0.9.0-beta
+    validations:
+      required: true
+  - type: input
+    id: track
+    attributes:
+      label: Track number and name
+      placeholder: 04 Imola
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source of the track file
+      options:
+        - Original track (ready-made racing line)
+        - Mod / other track file (racing line computed)
+    validations:
+      required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type of problem
+      options:
+        - Tool error (command prompt message)
+        - Game crash
+        - Physics (car behaviour, walls, kerbs)
+        - Graphics
+        - Pit lane / pit stop
+        - Computer cars / racing line
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where does it happen?
+      description: Corner name, pit lane, start line ... and in which session (race, qualifying, practice).
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshot or command prompt text
+      description: Drag images here. For tool errors paste the complete text.
