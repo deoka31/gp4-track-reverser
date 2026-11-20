@@ -167,6 +167,43 @@ def read_track(groups, ring):
     return T
 
 
+def _wrap32(x):
+    return (x + 2 ** 31) % 2 ** 32 - 2 ** 31
+
+
+def integrated_headings(T, start):
+    """Heading of every point as the game rebuilds it: start heading plus the summed per-segment turns
+    ('hd'). The game derives the local frame direction of each segment (seg+0, used for the along-track
+    position of cars) from this sum, not from the absolute headings (command F0)."""
+    out = [start]
+    for i in range(T['N'] - 1):
+        out.append(s32(out[-1] + T['hd'][i]))
+    return out
+
+
+def _main_join_heading(TM, mg, cmd):
+    """Integrated main-track heading at the group that holds the pit lane join command (86 = pit entry)."""
+    gi = [i for i, g in enumerate(mg) for c in g['cmds'] if c['cmd'] == cmd]
+    if not gi:
+        return None
+    return integrated_headings(TM, TM['H'][0])[gi[0]]
+
+
+def _align_pit_heading(RM, RP, mg_new_join):
+    """The pit lane build starts from the main track's integrated heading at the join (command 86). After
+    mirroring, that heading differs from the first absolute pit heading by up to a few degrees (the original
+    files agree exactly). The local frame of every pit segment is then rotated by that error, and cars
+    parked 4-6 m beside the lane (the boxes) get an along-track position that is too small by
+    lateral * sin(error): the pit stop is never accepted (stuck car, crew never starts). Fix: put the
+    difference into the turn of the first pit segment, so that the integrated pit headings equal the
+    absolute ones again. The main track itself is left untouched (changing its turns crashes the game)."""
+    h = mg_new_join
+    if h is None or RP['N'] < 2:
+        return
+    RP['hd'][0] = s32(RP['H'][1] - h)
+
+
+
 def reverse_track_arrays(T, ring):
     n = T['N']
     R = {'N': n, 'ring': ring}
@@ -835,6 +872,11 @@ def reverse_json(j):
     TP = read_track(pg, False)
     RM = reverse_track_arrays(TM, True)
     RP = reverse_track_arrays(TP, False)
+    # heading of the reversed main track at the new pit entry (= old pit exit, command 87), as the game sums it
+    _joins = [i for i, g in enumerate(mg) for c in g['cmds'] if c['cmd'] == '87']
+    if _joins:
+        _hm = integrated_headings(RM, RM['H'][0])[(N - _joins[0]) % N]
+        _align_pit_heading(RM, RP, _hm)
     if TM.get('F4'):
         src = TM.get('E_end') or TM['F4']
         RM['F4'] = (swap_side(src[1], True), swap_side(src[0], False))
@@ -915,23 +957,45 @@ def reverse_json(j):
 # ---------------------------------------------------------------------------
 # Pruefungen
 
-def canon(stream, pit=False):
-    """Vergleichsform: Befehle je Gruppe ungeordnet; E8 mit absolutem Ziel-Segment (Gruppe + Versatz);
-    bei der Boxengasse zaehlen die Breitenwerte des Dummy-Punkts hinter dem Ende nicht."""
-    res, e8 = [], []
+def canon(stream, pit=False, relaxed=False):
+    """Comparison form: commands of a group unordered; E8 with absolute target segment (group + offset);
+    for the pit lane the width values of the dummy point behind the end do not count.
+    relaxed=True ignores what a reversal changes on purpose and therefore cannot be undone by reversing twice:
+      - the pit box marks (89 / F1) are moved by one segment (box alignment, 0.9.1),
+      - the turn of the first and the last pit segment (pit heading alignment, 0.9.2),
+      - the low bits of the start heading in the main stream (EF).
+    The positions of the box marks are compared separately (at most one group apart)."""
+    res, e8, marks = [], [], {}
     groups = split_groups(stream)
     for gi, x in enumerate(groups):
         items = []
+        sec = x['sec']
         for c in x['cmds']:
             if c['cmd'] == 'E8':
                 e8.append((gi + c['seg'], json.dumps(c['args'])))
                 continue
             if pit and gi == len(groups) - 1 and c['cmd'] in ('B4', 'B5', 'AD'):
                 continue
+            if relaxed:
+                if c['cmd'] in ('89', '88', 'F1'):
+                    marks[c['cmd']] = gi
+                    continue
+                if c['cmd'] == 'EF' and not pit and gi == 0:
+                    c = dict(c, args=[0] + list(c['args'][1:]))
+                if pit and c['cmd'] == 'F0' and gi in (0, len(groups) - 2):
+                    c = dict(c, args=[0] + list(c['args'][1:]))
+                    sec = dict(sec, words=[0] + list(sec['words'][1:]))
             items.append(json.dumps({k: v for k, v in c.items() if k != 'note'}, sort_keys=True))
-        res.append((sorted(items), x['sec']))
+        res.append((sorted(items), sec))
     res.append((sorted(e8), None))
+    if relaxed:
+        res.append((marks, None))
     return res
+
+
+def _marks_close(a, b):
+    ma, mb = a[-1][0], b[-1][0]
+    return set(ma) == set(mb) and all(abs(ma[k] - mb[k]) <= 1 for k in ma)
 
 
 def selftest(j0, j1):
@@ -939,9 +1003,11 @@ def selftest(j0, j1):
     j2 = reverse_json(j1)
     ok = True
     for name in ('main_stream', 'pit_stream'):
-        a, b = canon(j0[name], name == 'pit_stream'), canon(j2[name], name == 'pit_stream')
-        diffs = [i for i in range(len(a)) if a[i] != b[i]]
-        print('  zweimal umgekehrt, %-12s: %s' % (name, 'identisch' if not diffs else 'ABWEICHUNG in Gruppen %s' % diffs[:10]))
+        a, b = canon(j0[name], name == 'pit_stream', True), canon(j2[name], name == 'pit_stream', True)
+        diffs = [i for i in range(len(a) - 1) if a[i] != b[i]]
+        if not _marks_close(a, b):
+            diffs.append('box marks')
+        print('  zweimal umgekehrt, %-12s: %s' % (name, 'identisch (ohne bewusste Aenderungen)' if not diffs else 'ABWEICHUNG in Gruppen %s' % diffs[:10]))
         ok &= not diffs
     for k in ('track_header', 'cameras_hex', 'file_names'):
         same = j0[k] == j2[k]
@@ -955,6 +1021,9 @@ def selftest(j0, j1):
                 r = R0 + i * st
                 prof[(a + i) % N] = 0 if abs(r) > 200000 else (r > 0) - (r < 0)   # riesige Radien = Gerade
         return prof
+    hc = heading_check(j1)
+    print('  pit lane heading sum vs absolute heading: %.4f degrees (%s)' % (hc, 'ok' if hc < 0.01 else 'DEVIATION'))
+    ok &= hc < 0.01
     p0, p2 = cp(j0['racing_line']), cp(j2['racing_line'])
     nd = sum(1 for x, y in zip(p0, p2) if x != y)     # fast gerade Stellen duerfen Gerade <-> sehr weiter Bogen werden
     flips = sum(1 for x, y in zip(p0, p2) if x * y < 0)   # ein Richtungswechsel (links <-> rechts) waere ein Fehler
@@ -1003,6 +1072,21 @@ def join_check(j):
     return '; '.join(res)
 
 
+def heading_check(j):
+    """Largest difference (degrees) between the pit lane headings the game will sum up and the absolute
+    pit headings; ~0 for the originals, up to ~4 degrees for a naively mirrored file."""
+    mg = split_groups(j['main_stream'])
+    pg = split_groups(j['pit_stream'])
+    TM = read_track(mg, True)
+    TP = read_track(pg, False)
+    h = _main_join_heading(TM, mg, '86')
+    if h is None:
+        return 0.0
+    ip = integrated_headings(TP, h)
+    return max(abs(_wrap32(ip[k] - TP['H'][k])) * 360.0 / 2 ** 32 for k in range(1, TP['N']))
+
+
+
 def main(argv):
     src = argv[1] if len(argv) > 1 else os.path.join(HERE, 'Interlagos_Rueckwaerts', 'S1CT03_ORIGINAL.DAT')
     dst = argv[2] if len(argv) > 2 else os.path.join(HERE, 'Interlagos_Rueckwaerts', 'S1CT03.DAT')
@@ -1023,6 +1107,8 @@ def main(argv):
     rep = j1.pop('_line_report')
     print('Rennlinie: %(abschnitte)d Abschnitte, groesste Auslenkung %(max_quer_anteil).2f der halben Breite, '
           'groesster Sprung zwischen Abschnitten %(max_sprung).0f, Kreise durch Geraden ersetzt: %(geraden_statt_kreis)d' % rep)
+    print('Pit lane heading sum vs absolute heading (degrees): original %.3f / reversed %.3f'
+          % (heading_check(j0), heading_check(j1)))
     print('Boxen-Anschluesse alt: ' + join_check(j0))
     print('Boxen-Anschluesse neu: ' + join_check(j1))
     out = gt.build(j1)

@@ -22,6 +22,27 @@ For a ring of N points, reversed point j is original point `(N - j) % N`, and re
 - pit entry / exit joins in the main stream (86/87) swap
 - cameras are mirrored by segment number
 
+## Heading integration and the pit lane (0.9.2)
+
+The game does not store an absolute heading per segment. While loading it builds the track by adding up the per segment
+turn values `hd` starting at the start heading; this integrated heading (`seg+0`, 16 bit angle) is what the car
+model uses to turn world positions into the local track position (progress along the lane). The absolute heading
+(chord to the next segment) is only used for drawing and AI. In the original files both agree exactly. The main ring
+carries its closing error in `hd[N-1]`, and the pit lane is built from the main track state saved at the pit entry join
+(command 86).
+
+After mirroring, the integrated heading of the reversed file drifts from the absolute heading (Imola: 1.6 degrees at
+the seam of the main ring plus 0.3 degrees at the start of the pit lane). A car parked 4 to 6 m beside the lane then
+gets a local progress that is too small by `lateral * sin(error)`, a few tens of units. The pit stop gate
+(`PitBox_CheckStopZoneRace`) needs progress >= 0x1E00 at the stop point; with the error the stop point maps to about
+0x1D78, the car is never accepted as arrived, its speed never drops below the limit of the state machine and the crew
+never starts. That was the cause of stuck pit stops on Imola, Nuerburgring, Magny-Cours, Spa and Suzuka.
+
+Fix: `hd[0]` of the pit lane is recalculated so that the integrated pit heading matches the absolute heading at the
+join (`_align_pit_heading`). The main track `hd` is deliberately left alone: changing `hd[0]` of the main ring made the
+game crash at load. `heading_check()` reports the largest deviation between integrated and absolute pit heading in
+degrees (about 0 for the originals and for tool output, printed by `reverse_track.py`).
+
 ## Racing line
 
 The racing line is stored as sections. The game runs a small state machine over the track segments (radius, arc centre,

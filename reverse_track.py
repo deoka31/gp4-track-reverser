@@ -17,7 +17,7 @@ the folder racing_lines\\. For other tracks (mods) it is computed: this needs "p
 """
 import sys, os, re, json, glob, hashlib, argparse
 sys.dont_write_bytecode = True
-__version__ = '0.9.1-beta'
+__version__ = '0.9.2-beta'
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import gp4track as gt
@@ -147,6 +147,8 @@ def reverse_one(src, gp4, outdir):
         except FileNotFoundError as e:
             print('  GP4.exe not found: %s (use --gp4) - file not written.' % e)
             return False
+    hc = q.heading_check(j1)
+    print('  pit lane heading check: %.4f degrees%s' % (hc, '' if hc < 0.01 else ' - DEVIATION, pit stops may get stuck'))
     j1['racing_line'] = secs
     out = gt.build(j1)
     if gt.build(gt.dump(out)) != out:

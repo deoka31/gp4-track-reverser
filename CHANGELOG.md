@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.2-beta
+- Pit stops fixed on the reversed 04 Imola, 09 Nuerburgring, 10 Magny-Cours, 14 Spa and 17 Suzuka (confirmed in the game).
+  Cause: the integrated heading of the reversed pit lane differed from its absolute heading, so the car's local
+  progress at the stop point stayed below the stop gate. The pit lane `hd[0]` is now recalculated (see docs/METHOD.md).
+  This change is applied to all 17 tracks.
+- New check `heading_check`: the tool prints the pit lane heading deviation for every reversed track (warns at 0.01 degrees or more).
+- The self test ignores the changes a reversal makes on purpose (box mark shift, pit heading alignment, start heading bits).
+
 ## 0.9.1-beta
 - File and folder names are English now: `reverse_track.py` (was `umkehren.py`), `reverse_core.py`, `racing_line_fit.py`, `racing_lines\`, output folder `reversed\`, command `all`.
 - Pit crew side: the side is stored in `anim.wad` (first line of `AnimationData\<track>2001.anm`), not in the track file.
