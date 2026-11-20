@@ -1,6 +1,6 @@
 # Known issues
 
-Status of version **0.9.2-beta** (reported by the first tester, all 17 original tracks).
+Status of version **0.9.3-beta** (reported by the first tester, all 17 original tracks).
 
 | # | Issue | Tracks | Status |
 |---|---|---|---|

@@ -3,7 +3,7 @@
 Turns a **Grand Prix 4** track file (`S1CTnn.DAT`) around so that the circuit is driven in the opposite direction.
 Works for the 17 original tracks and, with a computed racing line, for other track files.
 
-> **Status: 0.9.2 beta.** All 17 original tracks start and can be driven, but each has small physical or visual
+> **Status: 0.9.3 beta.** All 17 original tracks start and can be driven, but each has small physical or visual
 > problems. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md). Please report what you find (see below).
 
 No game files are included. You need your own copy of Grand Prix 4.

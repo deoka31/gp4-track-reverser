@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.3-beta
+- No change to the output: all 17 reversed tracks are byte-identical to 0.9.2-beta.
+- Code comments, docstrings and messages are English now.
+- Confirmed in the game: pit stops work on all 17 tracks, the patched `anim.wad` puts the pit crew on the correct side, and converting mod tracks works. KNOWN_ISSUES.md is updated.
+
 ## 0.9.2-beta
 - Pit stops fixed on the reversed 04 Imola, 09 Nuerburgring, 10 Magny-Cours, 14 Spa and 17 Suzuka (confirmed in the game).
   Cause: the integrated heading of the reversed pit lane differed from its absolute heading, so the car's local
