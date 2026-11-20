@@ -4,7 +4,7 @@
 - Pit stops fixed on the reversed 04 Imola, 09 Nuerburgring, 10 Magny-Cours, 14 Spa and 17 Suzuka (confirmed in the game).
   Cause: the integrated heading of the reversed pit lane differed from its absolute heading, so the car's local
   progress at the stop point stayed below the stop gate. The pit lane `hd[0]` is now recalculated (see docs/METHOD.md).
-  This change is applied to all 17 tracks.
+  This change is applied to all 17 tracks; pit stops work on all 17 tracks (confirmed in the game).
 - New check `heading_check`: the tool prints the pit lane heading deviation for every reversed track (warns at 0.01 degrees or more).
 - The self test ignores the changes a reversal makes on purpose (box mark shift, pit heading alignment, start heading bits).
 
