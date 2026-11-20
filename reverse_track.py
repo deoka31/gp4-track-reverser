@@ -139,7 +139,7 @@ def reverse_one(src, gp4, outdir):
             print('  Computing the racing line (a few minutes) ...')
             _, secs, st = U.compute_line(j0, exe, q)
             how = 'computed (%d sections, mean deviation %.0f, outside the track: %d segments)' % (
-                st['abschnitte'], st['fehler_mittel'], len(st['ausserhalb']))
+                st['sections'], st['mean_error'], len(st['outside']))
         except ImportError:
             print('  No ready-made racing line for this file and "unicorn" is missing (pip install unicorn).')
             print('  Without a matching racing line the game would crash - file not written.')

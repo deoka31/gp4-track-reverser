@@ -1,19 +1,19 @@
-"""racing_lines-Anpassung (CC-Linie) fuer umgekehrte GP4-Strecken.
-Fuehrt die ECHTE Routine RacingLine_BuildIntoSegments (GP4.exe, 0x40abc1) in einem x86-Emulator (unicorn) aus
-und passt damit eine Kette von Abschnitten an die gespiegelte Originallinie an.
-Benoetigt: pip install unicorn, sowie GP4.exe. Ergebnisse fuer die 17 Originalstrecken liegen fertig in racing_lines/."""
+"""Racing line fit for reversed GP4 tracks.
+Runs the REAL routine RacingLine_BuildIntoSegments (GP4.exe, 0x40abc1) in an x86 emulator (unicorn)
+and fits a chain of sections to the mirrored original line.
+Needs: pip install unicorn and GP4.exe. Results for the 17 original tracks are delivered in racing_lines/."""
 import sys, os, struct, json, math, time, copy
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 EXE = None
-Q = None        # Modul mit read_track/split_groups/reverse_json (reverse_core)
+Q = None        # module with read_track/split_groups/reverse_json (reverse_core)
 N = 884
 LASTP = 883
 
 
-def configure(exe, quellcode, n):
+def configure(exe, core, n):
     global EXE, Q, N, LASTP
-    EXE, Q, N, LASTP = exe, quellcode, n, n - 1
+    EXE, Q, N, LASTP = exe, core, n, n - 1
 
 
 def _unicorn():
@@ -362,7 +362,7 @@ def fit(O, T, Lt, Ht, bounds, Kt=None, mu=0.6, beam=6, lam=0.7, S=380.0, verbose
         for (c0, chain, lat, A) in sts:
             variants.append((c0, chain, lat, A, False))
             if k > 0 and (abs(lat - Lt[k]) > 500 or abs(s16(A - Ht[k])) > 1500):
-                # Neustart: Abschnitt mit Startwerten (Flags D800) direkt auf der Ziellinie
+                # Restart: section with start values (flags D800) directly on the target line
                 variants.append((c0 + 6.0, chain, Lt[k], Ht[k], True))
         for (c0, chain, lat, A, reset) in variants:
             nb = [b for b in bounds if b > k]
@@ -437,9 +437,9 @@ def to_sections(chain, Lt0, Ht0, Lt_all=None, Ht_all=None):
 
 
 
-def compute_line(j0, exe, quellcode, mu=0.6, lam=1.5, beam=5, log=print):
-    """j0: JSON der ORIGINALstrecke (gp4track.dump). Liefert (j1, Abschnitte, Statistik) fuer die umgekehrte Strecke."""
-    configure(exe, quellcode, len(quellcode.read_track(quellcode.split_groups(j0['main_stream']), True)['hd']))
+def compute_line(j0, exe, core, mu=0.6, lam=1.5, beam=5, log=print):
+    """j0: JSON of the ORIGINAL track (gp4track.dump). Returns (j1, sections, statistics) for the reversed track."""
+    configure(exe, core, len(core.read_track(core.split_groups(j0['main_stream']), True)['hd']))
     j1 = reversed_json(j0)
     T1 = track_from_json(j1, Q)
     T0, lat0, habs0 = old_line(j0)
@@ -451,7 +451,7 @@ def compute_line(j0, exe, quellcode, mu=0.6, lam=1.5, beam=5, log=print):
     t = time.time()
     fin = fit(O, T1, Lt, Ht, bounds, Kt=Kt, mu=mu, lam=lam, beam=beam, verbose=False)
     if not fin:
-        raise RuntimeError('Anpassung fand keine Loesung')
+        raise RuntimeError('fit found no solution')
     best = fin[0]
     secs = to_sections(best[1], Lt[0], Ht[0], Lt, Ht)
     sim = Sim()
@@ -459,6 +459,6 @@ def compute_line(j0, exe, quellcode, mu=0.6, lam=1.5, beam=5, log=print):
     lat, hd, same, _ = sim.run(secs)
     err = [abs(lat[p] - Lt[p]) for p in range(LASTP)]
     bad = [p for p in range(LASTP) if abs(lat[p]) > (T1['Wn'][p] if lat[p] < 0 else T1['Wp'][p])]
-    stats = {'abschnitte': len(secs), 'segmente': sum(s['len'] for s in secs), 'fehler_mittel': sum(err) / len(err),
-             'fehler_max': max(err), 'ausserhalb': bad, 'sekunden': round(time.time() - t), 'strom_unveraendert': same}
+    stats = {'sections': len(secs), 'segments': sum(s['len'] for s in secs), 'mean_error': sum(err) / len(err),
+             'max_error': max(err), 'outside': bad, 'seconds': round(time.time() - t), 'stream_unchanged': same}
     return j1, secs, stats

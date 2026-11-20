@@ -3,28 +3,18 @@
 """
 reverse_core.py
 
-Dreht die Streckendatei des ORIGINAL-Interlagos (Circuits\\S1CT03.DAT, 2001)
-um, so dass in die andere Richtung gefahren wird.
+Core of the GP4 track reverser: turns the circuit file of a Grand Prix 4 track around so that the track is driven
+in the opposite direction. The command line front end is reverse_track.py; details are in docs/METHOD.md.
 
-Aufruf:
-    python reverse_core.py [Eingabe.DAT] [Ausgabe.DAT]
+Needs gp4track.py (unchanged copy from the gp4-decomp project, next to this file).
 
-Standard: Eingabe = ..\\Circuits\\S1CT03.DAT (nur gelesen),
-          Ausgabe = Interlagos_Rueckwaerts\\S1CT03.DAT (neben diesem Skript).
-In den Ordner "Circuits" wird NIE geschrieben.
-
-Benoetigt gp4track.py (unveraenderte Kopie aus dem gp4-decomp-Projekt, liegt daneben).
-
-Prinzip (alles sind Spiegelungen des Rings):
-  Hauptstrecke (N = 884):  Punkt j (neu) <-> Punkt (N-j) % N (alt)
-                           Segment j (neu) <-> Segment N-1-j (alt)
-  Boxengasse (linear, 260 Punkte): Punkt i <-> 259-i, Segment i <-> 258-i
-  Richtung (Heading) + 0x80000000, Steigung negiert, Heading-Aenderung je
-  Segment negiert, Breite links <-> rechts, Querneigung negiert, Begrenzungs-
-  linien und Randsteine links <-> rechts, Kameras gespiegelt (mit gleichem
-  Abstand zum Schaltpunkt), Rennlinie rueckwaerts (Radien mit anderem
-  Vorzeichen, Reihenfolge umgekehrt).
-Stand der Sicherheit: siehe GP4_InterlagosRueckwaerts_LIESMICH.txt
+Principle (everything is a mirror image of the ring):
+  Main track (N points):   point j (new) <-> point (N-j) % N (old)
+                           segment j (new) <-> segment N-1-j (old)
+  Pit lane (linear, NP points): point i <-> NP-1-i, segment i <-> NP-2-i
+  Heading + 0x80000000, gradient negated, heading change per segment negated, width left <-> right, bank angle
+  negated, boundary lines and kerbs left <-> right, cameras mirrored (same distance to the switch point),
+  racing line backwards (radii with the opposite sign, order reversed).
 """
 import sys, os, json, copy, struct, math
 
@@ -56,7 +46,7 @@ def lo16(v):
 
 
 # ---------------------------------------------------------------------------
-# Befehlsstrom in Gruppen zerlegen (die Befehle vor einem Abschnitt gehoeren dazu)
+# Split the command stream into groups (the commands in front of a section belong to it)
 
 def split_groups(stream):
     groups, cur = [], []
@@ -67,7 +57,7 @@ def split_groups(stream):
         else:
             cur.append(it)
     if cur:
-        raise ValueError('Befehle nach dem letzten Abschnitt')
+        raise ValueError('commands after the last section')
     return groups
 
 
@@ -93,7 +83,7 @@ def swap_side(rec, to_neg):
 
 
 def swap_flags(fl):
-    """Abschnitts-Flags: die Bits 0x800 und 0x400 (eine Seite / andere Seite) tauschen."""
+    """Section flags: swap the bits 0x800 and 0x400 (one side / other side)."""
     a, b = fl & 0x800, fl & 0x400
     fl &= ~0xC00
     if a:
@@ -108,7 +98,7 @@ def swap_f7(v):
 
 
 # ---------------------------------------------------------------------------
-# Strecke (Ring oder Linie) in Felder zerlegen und gespiegelt neu zusammensetzen
+# Split the track (ring or line) into fields and put it together again mirrored
 
 def read_track(groups, ring):
     n = len(groups)
@@ -124,7 +114,7 @@ def read_track(groups, ring):
     T['flags'] = [g['sec']['words'][2] for g in groups]
     T['w3'] = [g['sec']['words'][3] for g in groups]
     T['secn'] = [g['sec']['sec'] for g in groups]
-    # Breite / Querneigung: Gruppe g liefert Punkt g+1, Gruppe 0 zusaetzlich Punkt 0
+    # Width / bank: group g delivers point g+1, group 0 additionally point 0
     Wn, Wp, Bk = [None] * (n + 1), [None] * (n + 1), [None] * (n + 1)
     for gi, g in enumerate(groups):
         b4, b5, ad = cmds(g, 'B4'), cmds(g, 'B5'), cmds(g, 'AD')
@@ -137,7 +127,7 @@ def read_track(groups, ring):
             T['end_wb'] = (Wn[n], Wp[n], Bk[n])
         Wn, Wp, Bk = Wn[:n], Wp[:n], Bk[:n]
     T['Wn'], T['Wp'], T['Bk'] = Wn, Wp, Bk
-    # Begrenzungslinien (F5 = Endwerte an Punkt g+1, F4 = Startwerte an Punkt 0)
+    # Boundary lines (F5 = end values at point g+1, F4 = start values at point 0)
     E = [None] * (n + 1)
     for gi, g in enumerate(groups):
         f5 = cmds(g, 'F5')
@@ -208,11 +198,11 @@ def reverse_track_arrays(T, ring):
     n = T['N']
     R = {'N': n, 'ring': ring}
     if ring:
-        P = lambda j: (n - j) % n                                   # Punkt neu -> alt
-        S = lambda j: n - 1 - j                                     # Segment neu -> alt
+        P = lambda j: (n - j) % n                                   # point new -> old
+        S = lambda j: n - 1 - j                                     # segment new -> old
     else:
         P = lambda j: n - 1 - j
-        S = lambda j: n - 2 - j if j < n - 1 else n - 1             # letztes Segment = Dummy
+        S = lambda j: n - 2 - j if j < n - 1 else n - 1             # last segment = dummy
     R['F6'] = [list(T['F6'][P(j)]) for j in range(n)]
     R['H'] = [s32(T['H'][P(j)] + 0x80000000) for j in range(n)]
     R['G'] = [s32(-T['G'][P(j)]) for j in range(n)]
@@ -258,10 +248,10 @@ def reverse_track_arrays(T, ring):
     for (gi, c, a) in T['kerbs']:
         d, l, s_, e_ = a
         if d != 0:
-            raise ValueError('Randstein mit Verzoegerung nicht unterstuetzt')
+            raise ValueError('kerb with delay not supported')
         if ring:
             if gi + l >= n:
-                raise ValueError('Randstein ueber die Startlinie nicht unterstuetzt')
+                raise ValueError('kerb across the start line not supported')
             ng = n - gi - l
         else:
             ng = n - 1 - gi - l
@@ -316,11 +306,11 @@ def assemble_stream(group_items, R):
 
 
 # ---------------------------------------------------------------------------
-# Rennlinie
+# Racing line
 
 def racing_pieces(rl, N):
-    """Aus der Abschnittsliste (sie laeuft etwas mehr als eine Runde) die wirklich
-    gueltige Aufteilung des Rings: Liste (start, anzahl, Radius_am_Anfang, Radius_Schritt)."""
+    """From the section list (it runs a little more than one lap) the really valid
+    division of the ring: list of (start, count, radius_at_start, radius_step)."""
     gov = [None] * N
     k = 0
     for si, s in enumerate(rl):
@@ -328,12 +318,12 @@ def racing_pieces(rl, N):
             gov[k % N] = (si, j)
             k += 1
     if any(g is None for g in gov):
-        raise ValueError('Rennlinie deckt nicht den ganzen Ring ab')
+        raise ValueError('racing line does not cover the whole ring')
     info = []
     for s in rl:
         fl = int(s['flags'], 16)
         if not fl & 0x1000:
-            raise ValueError('Radien mal 8 nicht unterstuetzt')
+            raise ValueError('radii times 8 not supported')
         n = s['len']
         step = 0
         if fl & 0x2000:
@@ -349,12 +339,12 @@ def racing_pieces(rl, N):
         R0, step = info[si]
         pieces.append((p, cnt, R0 + j0 * step, step))
     if sum(c for _, c, _, _ in pieces) != N:
-        raise ValueError('racing_lines-Aufteilung stimmt nicht')
+        raise ValueError('racing line division is inconsistent')
     return pieces
 
 
 def merge_pieces(pieces, N):
-    """Benachbarte Stuecke mit durchgehendem Radiusverlauf zusammenfassen (nur zum Vergleich)."""
+    """Merge neighbouring pieces with a continuous radius progression (for comparison only)."""
     ps = sorted(pieces)
     out = []
     for p in ps:
@@ -386,19 +376,19 @@ def bam(a):
     return a * TWO_PI / 65536.0
 
 
-def vf(a):                                   # Vorwaerts-Vektor (X, Z) zu einem 16-Bit-Winkel
+def vf(a):                                   # forward vector (X, Z) for a 16 bit angle
     r = bam(a)
     return math.sin(r), math.cos(r)
 
 
-def vn(a):                                   # Seiten-Vektor (rechts), gleiche Konvention wie das Spiel
+def vn(a):                                   # side vector (right), same convention as the game
     r = bam(a)
     return math.cos(r), -math.sin(r)
 
 
 def line_geometry(T):
-    """Streckenwerte, die die racing_lines-Berechnung des Spiels braucht
-    (racing_line_build.asm: Segment-Ursprung, Heading, Quer-Winkel)."""
+    """Track values needed by the racing line calculation of the game
+    (racing_line_build.asm: segment origin, heading, lateral angle)."""
     n = T['N']
     O = [(d32(*T['F6'][p][0:2]) / 256.0, d32(*T['F6'][p][4:6]) / 256.0) for p in range(n)]
     h = [(T['H'][p] >> 16) & 0xFFFF for p in range(n)]
@@ -408,9 +398,9 @@ def line_geometry(T):
 
 
 def sim_piece(g, rec, n, L, psi, R):
-    """Ein racing_lines-Abschnitt ab Segment rec mit festem Startzustand (Quer-Lage L,
-    Winkel psi) und Radius R (0 = Gerade). Ergebnis: Quer-Lage an den n Querlinien
-    rec+1 .. rec+n, oder None wenn die Berechnung nicht geht."""
+    """A racing line section starting at segment rec with a fixed start state (lateral position L,
+    angle psi) and radius R (0 = straight). Result: lateral position at the n cross lines
+    rec+1 .. rec+n, or None if the calculation is not possible."""
     N = g['N']
     p0 = rec % N
     fh, nh = vf(g['h'][p0]), vn(g['h'][p0])
@@ -512,7 +502,7 @@ def piece_mid_radius(R0, n, step):
 def linearize(pieces, N):
     lin = []
     for (a, n, R0, step) in sorted(pieces):
-        if a + n > N:                                   # ueber Punkt 0 hinweg: teilen
+        if a + n > N:                                   # across point 0: split
             na = N - a
             lin.append((a, na, R0, step))
             lin.append((0, n - na, R0 + na * step, step))
@@ -522,17 +512,17 @@ def linearize(pieces, N):
     pos = 0
     for a, n, _, _ in lin:
         if a != pos:
-            raise ValueError('Rennlinie hat Luecke')
+            raise ValueError('racing line has a gap')
         pos += n
     if pos != N:
-        raise ValueError('Rennlinie deckt den Ring nicht')
+        raise ValueError('racing line does not cover the ring')
     return lin
 
 
 def chain_step(g, rec, n, pen_lat, pen_A, R, cx):
-    """Ein Abschnitt, der den Zustand (Quer-Lage, Winkel) des vorigen uebernimmt - so wie das
-    Spiel es tut (racing_line_build.asm). cx = Verschiebung (Bogen) bzw. Knick (Gerade).
-    Ergebnis: gespeicherte Quer-Lagen an den Segmenten rec .. rec+n-1, End-Lage, End-Winkel."""
+    """A section that takes over the state (lateral position, angle) of the previous one - as the
+    game does it (racing_line_build.asm). cx = shift (arc) or kink (straight).
+    Result: stored lateral positions at segments rec .. rec+n-1, end position, end angle."""
     N = g['N']
     p0 = rec % N
     if R == 0:
@@ -595,18 +585,18 @@ def _chain_cost(g, rec, n, pen_lat, pen_A, R, cx):
     return cost, lat, A
 
 
-LINE_KINK_MAX = 0            # groesster Knick einer Geraden (Original: immer 0 - nur das ist sicher bekannt)
-LINE_CX_MAX = 0              # groesste Verschiebung eines Bogens (Original: fast immer 0)
-LINE_SPLIT_MIN = 12          # Stuecke ab dieser Laenge werden halbiert
-LINE_STRAIGHT_RADII = (250000, 400000, 800000, 1600000)   # sehr weite Boegen als Lenkung fuer Geraden
+LINE_KINK_MAX = 0            # largest kink of a straight (original: always 0 - only that is known for sure)
+LINE_CX_MAX = 0              # largest shift of an arc (original: almost always 0)
+LINE_SPLIT_MIN = 12          # pieces from this length on are halved
+LINE_STRAIGHT_RADII = (250000, 400000, 800000, 1600000)   # very wide arcs as steering for straights
 LINE_SCALES = (0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5)
 
 
 def chain_fit(g, lin, N, extra_steps=40, beam=800):
-    """Wie chain_fit_greedy, aber mit Strahlsuche: es werden mehrere Zwischenzustaende
-    gleichzeitig weiterverfolgt, damit eine spaetere Kurve nicht an einer zu fruehen
-    Entscheidung scheitert."""
-    # lange Stuecke in zwei Haelften teilen: mehr Lenkmoeglichkeiten allein ueber den Radius
+    """Like chain_fit_greedy, but with beam search: several intermediate states are
+    followed at the same time, so that a later corner does not fail because of a too early
+    decision."""
+    # split long pieces into two halves: more steering options through the radius alone
     parts = []
     for (a, n, R0, st) in lin:
         if n >= LINE_SPLIT_MIN:
@@ -650,9 +640,9 @@ def chain_fit(g, lin, N, extra_steps=40, beam=800):
                 if key not in cand or cand[key][0] > tot:
                     cand[key] = (tot, lat, A, (c0, lat0, A0, par, info), (rec, n, cx, Rt))
         if not cand:
-            raise ValueError('Rennlinie: Abschnitt ab Segment %d (Laenge %d) nicht berechenbar' % (rec % N, n))
+            raise ValueError('racing line: section from segment %d (length %d) cannot be calculated' % (rec % N, n))
         states = sorted(cand.values(), key=lambda s: s[0])[:beam]
-        # Zustand = (Kosten, Lage, Winkel, Eltern, Info) - Eltern ist der ganze Eltern-Tupel
+        # state = (cost, position, angle, parent, info) - parent is the whole parent tuple
         states = [(s[0], s[1], s[2], s[3], s[4]) for s in states]
         rec += n
     best = states[0]
@@ -676,15 +666,15 @@ def chain_fit(g, lin, N, extra_steps=40, beam=800):
         secs.append(s)
     worst = max(abs(final[p]) / float(g['Wn'][p] if final[p] < 0 else g['Wp'][p]) for p in range(N))
     seam = abs(final[0] - final[N - 1])
-    return secs, {'abschnitte': len(secs), 'max_quer_anteil': worst, 'max_sprung': seam,
-                  'geraden_statt_kreis': 0}
+    return secs, {'sections': len(secs), 'max_lateral_share': worst, 'max_jump': seam,
+                  'straights_for_circles': 0}
 
 
 def chain_fit_greedy(g, lin, N, extra_steps=40):
-    """Rennlinie als Kette ohne Zwischen-Startpunkte (wie im Original und wie GP4 Builder sie anzeigt).
-    Fuer jeden Abschnitt werden Verschiebung/Knick (und leicht der Radius) so gewaehlt, dass die Linie
-    auf der Strecke bleibt. Die Kette laeuft ueber Segment 0 hinaus (wie im Original), damit der
-    Anfang durch die weitergefuehrte Linie ueberschrieben wird."""
+    """Racing line as a chain without intermediate start points (as in the original and as GP4 Builder shows it).
+    For every section the shift/kink (and slightly the radius) is chosen so that the line
+    stays on the track. The chain runs beyond segment 0 (as in the original) so that the
+    start is overwritten by the continued line."""
     seq, tot = [], 0
     for item in lin:
         seq.append(item)
@@ -710,7 +700,7 @@ def chain_fit_greedy(g, lin, N, extra_steps=40):
             if r is not None:
                 scored.append((r[0], cx, sc))
         if not scored:
-            raise ValueError('Rennlinie: Abschnitt ab Segment %d (Laenge %d) nicht berechenbar' % (rec % N, n))
+            raise ValueError('racing line: section from segment %d (length %d) cannot be calculated' % (rec % N, n))
         scored.sort()
         for c0, cx0, sc0 in scored[:3]:
             cx, sc, c = cx0, sc0, c0
@@ -743,17 +733,17 @@ def chain_fit_greedy(g, lin, N, extra_steps=40):
         rec += n
     worst = max(abs(final[p]) / float(g['Wn'][p] if final[p] < 0 else g['Wp'][p]) for p in range(N))
     seam = abs(final[0] - final[N - 1])
-    return secs, {'abschnitte': len(secs), 'max_quer_anteil': worst, 'max_sprung': seam,
-                  'geraden_statt_kreis': 0}
+    return secs, {'sections': len(secs), 'max_lateral_share': worst, 'max_jump': seam,
+                  'straights_for_circles': 0}
 
 
 def anchored_line(g, pieces, N, chain=True):
-    """Neue Rennlinie: jeder Abschnitt bekommt seinen eigenen Startzustand (Flags 0x8000+0x0800),
-    gewaehlt so, dass die Linie sicher auf der Strecke bleibt. Dadurch kann sich nichts
-    aufschaukeln. Spiralen werden zu Kreisen mit mittlerem Radius."""
+    """New racing line: every section gets its own start state (flags 0x8000+0x0800),
+    chosen so that the line surely stays on the track. Nothing can build up that way.
+    Spirals become circles with a mean radius."""
     lin = linearize(pieces, N)
-    # Vorlauf: Abschnitte, die sich als EIN Kreis nicht auf der Strecke halten lassen
-    # (Spiralen, lange Boegen), werden halbiert, bis jedes Stueck passt.
+    # Preparation: sections that cannot be kept on the track as ONE circle
+    # (spirals, long arcs) are halved until every piece fits.
     todo, done = list(lin), []
     while todo:
         a, n, R0, st = todo.pop(0)
@@ -785,11 +775,11 @@ def anchored_line(g, pieces, N, chain=True):
             next_L = params[(k + 1) % K][0] if params[(k + 1) % K] is not None else None
             fit = _fit_piece(g, a, n, radii[k], prev_end, next_L)
             if fit is None and radii[k]:
-                # Notfall: Kreis passt nicht - als Gerade versuchen
+                # Emergency: the circle does not fit - try a straight
                 radii[k] = 0
                 fit = _fit_piece(g, a, n, 0, prev_end, next_L)
             if fit is None:
-                raise ValueError('racing_lines-Abschnitt ab Segment %d (Laenge %d) laesst sich nicht auf der Strecke halten' % (a, n))
+                raise ValueError('racing line section from segment %d (length %d) cannot be kept on the track' % (a, n))
             params[k] = (fit[0], fit[1])
             ends[k] = fit[2]
     secs, worst, jump = [], 0.0, 0.0
@@ -802,14 +792,14 @@ def anchored_line(g, pieces, N, chain=True):
             p = (a + i) % N
             worst = max(worst, abs(lat) / float(g['Wn'][p] if lat < 0 else g['Wp'][p]))
         jump = max(jump, abs(lats[-1] - params[(k + 1) % K][0]))
-    return secs, {'abschnitte': K, 'max_quer_anteil': worst, 'max_sprung': jump,
-                  'geraden_statt_kreis': sum(1 for k in range(K) if radii[k] == 0 and piece_mid_radius(lin[k][2], lin[k][1], lin[k][3]) != 0)}
+    return secs, {'sections': K, 'max_lateral_share': worst, 'max_jump': jump,
+                  'straights_for_circles': sum(1 for k in range(K) if radii[k] == 0 and piece_mid_radius(lin[k][2], lin[k][1], lin[k][3]) != 0)}
 
 
 def pieces_to_sections(pieces, N, first_lat, first_head):
     lin = []
     for (a, n, R0, step) in sorted(pieces):
-        if a + n > N:                                   # ueber Punkt 0 hinweg: teilen
+        if a + n > N:                                   # across point 0: split
             na = N - a
             lin.append((a, na, R0, step))
             lin.append((0, n - na, R0 + na * step, step))
@@ -819,10 +809,10 @@ def pieces_to_sections(pieces, N, first_lat, first_head):
     pos = 0
     for a, n, _, _ in lin:
         if a != pos:
-            raise ValueError('Rennlinie hat Luecke')
+            raise ValueError('racing line has a gap')
         pos += n
     if pos != N:
-        raise ValueError('Rennlinie deckt den Ring nicht')
+        raise ValueError('racing line does not cover the ring')
     secs = []
     for idx, (a, n, R0, step) in enumerate(lin):
         fl = 0x5000 | (0x2000 if step else 0) | (0x8000 if idx == 0 else 0)
@@ -839,7 +829,7 @@ def pieces_to_sections(pieces, N, first_lat, first_head):
 
 
 # ---------------------------------------------------------------------------
-# Kameras: 19 Woerter je Datensatz (siehe docs/formats/circuit-dat.md)
+# Cameras: 19 words per record (see docs/formats/circuit-dat.md in the gp4-decomp project)
 
 def reverse_cameras(cams, N):
     out = []
@@ -847,7 +837,7 @@ def reverse_cameras(cams, N):
         w = list(struct.unpack('<19H', bytes.fromhex(h)))
         p = w[0] & 0x3FFF
         sw = w[5] & 0x3FFF
-        L = p - sw                                       # Abstand Kamera - Schaltpunkt bleibt
+        L = p - sw                                       # distance camera - switch point stays
         w[0] = (w[0] & 0xC000) | ((N - 1 - p) % N)
         w[1] = (-s16(w[1])) & 0xFFFF
         w[3] = (w[3] & 0xC000) | ((N - 1 - (w[3] & 0x3FFF)) % N)
@@ -858,7 +848,7 @@ def reverse_cameras(cams, N):
 
 
 # ---------------------------------------------------------------------------
-# Gesamte Umkehr
+# The whole reversal
 
 PIT_SWAP = {'9B': '9E', '9E': '9B', '9F': 'A0', 'A0': '9F', '96': '97', '97': '96', '89': 'F1', 'F1': '89'}
 
@@ -881,7 +871,7 @@ def reverse_json(j):
         src = TM.get('E_end') or TM['F4']
         RM['F4'] = (swap_side(src[1], True), swap_side(src[0], False))
 
-    # Hauptstrecke: Sonderbefehle in Gruppe 0, Boxen-Anschluesse
+    # Main track: special commands in group 0, pit lane joins
     g0 = mg[0]['cmds']
     first = {0: []}
     first[0] += [copy.deepcopy(c) for c in g0 if c['cmd'] in ('BD', 'CC')]
@@ -895,14 +885,14 @@ def reverse_json(j):
         for c in g['cmds']:
             if c['cmd'] in ('86', '87'):
                 first.setdefault((N - gi) % N, []).append(mk('87' if c['cmd'] == '86' else '86', c['args']))
-    e8m = {}                                             # Startaufstellung bleibt hinter der Linie
+    e8m = {}                                             # the starting grid stays behind the line
     for gi, g in enumerate(mg):
         items = [copy.deepcopy(c) for c in g['cmds'] if c['cmd'] == 'E8']
         if items:
             e8m[gi] = ('end' if g['cmds'][-1]['cmd'] == 'E8' else 'front', items)
     j['main_stream'] = assemble_stream(emit_groups(RM, extra_first=first, ring=True, e8_items=e8m), RM)
 
-    # Boxengasse
+    # Pit lane
     pit_first = {}
     ae = [copy.deepcopy(c) for c in pg[0]['cmds'] if c['cmd'] == 'AE']
     if ae:
@@ -935,7 +925,7 @@ def reverse_json(j):
                 e8p.setdefault(nt, ('front', []))[1].append(mk('E8', a))
     j['pit_stream'] = assemble_stream(emit_groups(RP, extra_first=pit_first, ring=False, e8_items=e8p), RP)
 
-    # Kopf (Aenderung der Flags 0x2 / 0x8 und der Gitter-Datei: wechselt die Seite der Pole-Position)
+    # Header (change of the flags 0x2 / 0x8 and of the grid file: switches the side of pole position)
     th = j['track_header']
     th['start_heading'] = s16(th['start_heading'] + 0x8000)
     th['start_gradient'] = s16(-th['start_gradient'])
@@ -943,19 +933,19 @@ def reverse_json(j):
     j['file_names'] = [n.replace('gridleft', 'gridline') if 'gridleft' in n else n.replace('gridline', 'gridleft')
                        for n in j['file_names']]
 
-    # Rennlinie
+    # Racing line
     pieces = racing_pieces(j['racing_line'], N)
     rp = reverse_pieces(pieces, N)
     geo = line_geometry(read_track(split_groups(j['main_stream']), True))
     j['racing_line'], j['_line_report'] = anchored_line(geo, rp, N)
 
-    # Kameras
+    # Cameras
     j['cameras_hex'] = reverse_cameras(j['cameras_hex'], N)
     return j
 
 
 # ---------------------------------------------------------------------------
-# Pruefungen
+# Checks
 
 def canon(stream, pit=False, relaxed=False):
     """Comparison form: commands of a group unordered; E8 with absolute target segment (group + offset);
@@ -999,7 +989,7 @@ def _marks_close(a, b):
 
 
 def selftest(j0, j1):
-    """Zweimal umkehren muss wieder das Original ergeben."""
+    """Reversing twice must give the original again."""
     j2 = reverse_json(j1)
     ok = True
     for name in ('main_stream', 'pit_stream'):
@@ -1007,35 +997,35 @@ def selftest(j0, j1):
         diffs = [i for i in range(len(a) - 1) if a[i] != b[i]]
         if not _marks_close(a, b):
             diffs.append('box marks')
-        print('  zweimal umgekehrt, %-12s: %s' % (name, 'identisch (ohne bewusste Aenderungen)' if not diffs else 'ABWEICHUNG in Gruppen %s' % diffs[:10]))
+        print('  reversed twice, %-12s: %s' % (name, 'identical (without the deliberate changes)' if not diffs else 'DIFFERENCE in groups %s' % diffs[:10]))
         ok &= not diffs
     for k in ('track_header', 'cameras_hex', 'file_names'):
         same = j0[k] == j2[k]
-        print('  zweimal umgekehrt, %-12s: %s' % (k, 'identisch' if same else 'ABWEICHUNG'))
+        print('  reversed twice, %-12s: %s' % (k, 'identical' if same else 'DIFFERENCE'))
         ok &= same
     N = len(split_groups(j0['main_stream']))
-    def cp(rl):                         # Vorzeichen des Radius je Segment (Kurvenrichtung / Gerade)
+    def cp(rl):                         # sign of the radius per segment (curve direction / straight)
         prof = [0] * N
         for (a, n, R0, st) in racing_pieces(rl, N):
             for i in range(n):
                 r = R0 + i * st
-                prof[(a + i) % N] = 0 if abs(r) > 200000 else (r > 0) - (r < 0)   # riesige Radien = Gerade
+                prof[(a + i) % N] = 0 if abs(r) > 200000 else (r > 0) - (r < 0)   # huge radii = straight
         return prof
     hc = heading_check(j1)
     print('  pit lane heading sum vs absolute heading: %.4f degrees (%s)' % (hc, 'ok' if hc < 0.01 else 'DEVIATION'))
     ok &= hc < 0.01
     p0, p2 = cp(j0['racing_line']), cp(j2['racing_line'])
-    nd = sum(1 for x, y in zip(p0, p2) if x != y)     # fast gerade Stellen duerfen Gerade <-> sehr weiter Bogen werden
-    flips = sum(1 for x, y in zip(p0, p2) if x * y < 0)   # ein Richtungswechsel (links <-> rechts) waere ein Fehler
-    print('  zweimal umgekehrt, Rennlinie    : %s' % ('Kurvenrichtungen identisch' if nd == 0 else
-                                                      ('Kurvenrichtungen gleich, %d von %d Segmenten fast gerade (Gerade <-> weiter Bogen)' % (nd, N)
-                                                       if flips == 0 else 'ABWEICHUNG: %d Segmente mit vertauschter Kurvenrichtung' % flips)))
+    nd = sum(1 for x, y in zip(p0, p2) if x != y)     # almost straight places may turn straight <-> very wide arc
+    flips = sum(1 for x, y in zip(p0, p2) if x * y < 0)   # a change of direction (left <-> right) would be an error
+    print('  reversed twice, racing line    : %s' % ('curve directions identical' if nd == 0 else
+                                                      ('curve directions equal, %d of %d segments almost straight (straight <-> wide arc)' % (nd, N)
+                                                       if flips == 0 else 'DIFFERENCE: %d segments with swapped curve direction' % flips)))
     ok &= flips == 0
     return ok
 
 
 def chord_error(j):
-    """Mittlere Abweichung (in 1/65536 Kreis) zwischen Heading und Richtung zum naechsten Punkt."""
+    """Mean deviation (in 1/65536 circle) between heading and direction to the next point."""
     T = read_track(split_groups(j['main_stream']), True)
     n = T['N']
     tot = 0
@@ -1049,7 +1039,7 @@ def chord_error(j):
 
 
 def curvature_error(j):
-    """Mittlere Abweichung zwischen Heading-Aenderung je Segment und Abschnittswert."""
+    """Mean deviation between the heading change per segment and the section value."""
     T = read_track(split_groups(j['main_stream']), True)
     n = T['N']
     e = 0
@@ -1059,7 +1049,7 @@ def curvature_error(j):
 
 
 def join_check(j):
-    """Liegen Boxengassen-Anfang/-Ende am Hauptstrecken-Punkt der Anschluss-Befehle 86 / 87?"""
+    """Are the start / end of the pit lane at the main track point of the join commands 86 / 87?"""
     mg, pg = split_groups(j['main_stream']), split_groups(j['pit_stream'])
     TM, TP = read_track(mg, True), read_track(pg, False)
     pos = lambda T, i: (d32(*T['F6'][i][0:2]) / 256.0, d32(*T['F6'][i][4:6]) / 256.0)
@@ -1068,7 +1058,7 @@ def join_check(j):
     for cmd, pi in (('86', 0), ('87', TP['N'] - 1)):
         x, z = pos(TP, pi)
         best = min(range(TM['N']), key=lambda m: math.hypot(pos(TM, m)[0] - x, pos(TM, m)[1] - z))
-        res.append('%s bei %d, naechster Hauptpunkt %d' % (cmd, joins[cmd], best))
+        res.append('%s at %d, nearest main point %d' % (cmd, joins[cmd], best))
     return '; '.join(res)
 
 
@@ -1088,37 +1078,39 @@ def heading_check(j):
 
 
 def main(argv):
-    src = argv[1] if len(argv) > 1 else os.path.join(HERE, 'Interlagos_Rueckwaerts', 'S1CT03_ORIGINAL.DAT')
-    dst = argv[2] if len(argv) > 2 else os.path.join(HERE, 'Interlagos_Rueckwaerts', 'S1CT03.DAT')
+    if len(argv) < 3:
+        print('usage: python reverse_core.py INPUT.DAT OUTPUT.DAT   (reverse_track.py is the normal entry point)')
+        return 2
+    src, dst = argv[1], argv[2]
     if os.path.basename(os.path.dirname(os.path.abspath(dst))).lower() == 'circuits':
-        print('Abbruch: Schreiben in den Ordner "Circuits" ist absichtlich gesperrt.')
+        print('Aborted: writing into the "Circuits" folder is blocked on purpose.')
         return 2
     raw = open(src, 'rb').read()
     j0 = gt.dump(raw)
     if gt.build(json.loads(json.dumps(j0))) != raw:
-        print('FEHLER: Eingabedatei laesst sich nicht byte-genau neu bauen')
+        print('ERROR: the input file cannot be rebuilt byte for byte')
         return 1
     j1 = reverse_json(j0)
-    print('Selbsttest:')
+    print('Self test:')
     ok = selftest(j0, j1)
-    print('Geometrie: Heading-zu-Sehne-Abweichung alt %.1f / neu %.1f (je Punkt, 65536 = voller Kreis)'
+    print('Geometry: heading-to-chord deviation old %.1f / new %.1f (per point, 65536 = full circle)'
           % (chord_error(j0), chord_error(j1)))
-    print('Geometrie: Kurvenwert-Abweichung alt %.3f / neu %.3f' % (curvature_error(j0), curvature_error(j1)))
+    print('Geometry: curvature deviation old %.3f / new %.3f' % (curvature_error(j0), curvature_error(j1)))
     rep = j1.pop('_line_report')
-    print('Rennlinie: %(abschnitte)d Abschnitte, groesste Auslenkung %(max_quer_anteil).2f der halben Breite, '
-          'groesster Sprung zwischen Abschnitten %(max_sprung).0f, Kreise durch Geraden ersetzt: %(geraden_statt_kreis)d' % rep)
+    print('Racing line: %(sections)d sections, largest lateral offset %(max_lateral_share).2f of the half width, '
+          'largest jump between sections %(max_jump).0f, circles replaced by straights: %(straights_for_circles)d' % rep)
     print('Pit lane heading sum vs absolute heading (degrees): original %.3f / reversed %.3f'
           % (heading_check(j0), heading_check(j1)))
-    print('Boxen-Anschluesse alt: ' + join_check(j0))
-    print('Boxen-Anschluesse neu: ' + join_check(j1))
+    print('Pit lane joins old: ' + join_check(j0))
+    print('Pit lane joins new: ' + join_check(j1))
     out = gt.build(j1)
     j3 = gt.dump(out)
     if gt.build(j3) != out:
-        print('FEHLER: neue Datei laesst sich nicht stabil neu bauen')
+        print('ERROR: the new file cannot be rebuilt stably')
         return 1
     os.makedirs(os.path.dirname(os.path.abspath(dst)), exist_ok=True)
     open(dst, 'wb').write(out)
-    print('geschrieben: %s (%d Bytes, Original %d)' % (dst, len(out), len(raw)))
+    print('written: %s (%d bytes, original %d)' % (dst, len(out), len(raw)))
     gt.info(j3)
     return 0 if ok else 3
 
