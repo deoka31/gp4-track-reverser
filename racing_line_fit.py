@@ -246,7 +246,7 @@ patch_sim()
 
 def reversed_json(j0):
     Q.anchored_line = lambda g, p, n, chain=True: ([{'len': LASTP, 'flags': '5000', 'cx': 0, 'radius': 0}], {})
-    j1 = Q.reverse_json(j0, 0, ROT)
+    j1 = Q.reverse_json(j0, ROT)
     j1.pop('_line_report', None)
     return j1
 
