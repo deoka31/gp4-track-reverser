@@ -1,6 +1,6 @@
 # Known issues
 
-Status of version **0.9.4-beta**.
+Status of version **0.9.5-beta**.
 
 | # | Issue | Tracks | Status |
 |---|---|---|---|
@@ -10,6 +10,8 @@ Status of version **0.9.4-beta**.
 | 4 | Small physical and visual problems at places (e.g. computer cars brushing the edge, odd curb or wall pieces). | all 17 | open, please report places |
 | 5 | The racing line follows the mirrored original line only approximately: mean deviation 43-90 units (about 20-40 cm); a few segments lie slightly outside the asphalt (up to 1.4 times the half width). | all 17 | open, improvement planned |
 | 6 | Jump at the finish line (Interlagos, Sepang worst) and odd computer car lines behind the start. | all 17 | fixed in 0.9.4 (start line moved back by one segment); confirmed on 02, 03, 04. A very small remaining graphical blip at the line on 03 may be visible; not physical. |
+| 7 | 14 Spa: computer cars have trouble in the Bus Stop chicane (they run onto the grass and cause chaos). The racing line touches the kerb there (up to about 12% beyond the half width, roughly 10 cm); the original line touches the edge in the same place. Different fit settings did not change it. | 14 | open, cause not understood yet |
+| 8 | 07 Monaco: cars run with two wheels outside the track in some corners (graphical); at the tight hairpin there is sometimes physical contact with the wall. | 07 | open |
 
 Values that live in the game's EXE and not in the track file (for example the pit lane time to the first box) stay
 those of the original driving direction. They cannot be changed by this tool.

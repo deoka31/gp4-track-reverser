@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.5-beta
+- Fixed: computing the racing line for mod tracks (and for any run with `--rotate-start 0`) failed with
+  `TypeError: reverse_json() takes from 1 to 2 positional arguments` in 0.9.4. The 17 original tracks were not affected
+  (their racing lines are delivered ready-made). The output for the 17 originals is byte-identical to 0.9.4.
+- Known issues updated with the first reports from the 0.9.4 tests (Spa Bus Stop chicane, Monaco hairpin).
+
 ## 0.9.4-beta
 - **Jump at the finish line fixed** (first reported on 03 Interlagos; confirmed gone in the game on 03 Interlagos, 02 Sepang
   and 04 Imola; pit stops still work). Cause: every original track ends with a closing segment that is short and runs
