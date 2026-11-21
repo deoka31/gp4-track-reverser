@@ -152,6 +152,16 @@ def reverse_one(src, gp4, outdir, rotate=None):
         except FileNotFoundError as e:
             print('  GP4.exe not found: %s (use --gp4) - file not written.' % e)
             return False
+    if how.startswith('computed'):
+        try:
+            import corner_check
+            ok, msg = corner_check.check(j1, secs, os.path.join(gp4, 'GP4.exe'), q)
+            print('  corner table check: %s' % msg)
+            if not ok:
+                print('  The game would crash with this racing line - file not written.')
+                return False
+        except ImportError:
+            pass
     hc = q.heading_check(j1)
     print('  pit lane heading check: %.4f degrees%s' % (hc, '' if hc < 0.01 else ' - DEVIATION, pit stops may get stuck'))
     j1['racing_line'] = secs
