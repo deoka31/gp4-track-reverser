@@ -85,3 +85,14 @@ and used if the SHA-1 of the source file matches and the start line is moved.
 Some behaviour is fixed per track inside GP4.exe or in other archives and is not changed by this tool; see
 KNOWN_ISSUES.md. Findings about the file formats are documented in the gp4-decomp project
 (`docs/formats/circuit-dat.md`).
+
+
+## Corner table check (0.9.6)
+
+When a track is compiled the game builds a corner table from the racing line (apexes where the line comes within
+`half width - 1EDh` of an edge, turn-in, exit). For every corner it divides by the number of exit segments; a line whose
+corner ends exactly on its last apex gives a division by zero and the game crashes before the race (log: `[TC] CC line created`,
+then `EXCEPTION_INT_DIVIDE_BY_ZERO` at 0x0043F7D8). `corner_check.py` runs the real builder (GP4.exe 0x0043FC0C) in Unicorn
+on the reversed segment array (placed at the fixed address 0x008943A0) and reports whether it survives.
+The AI also takes its corner speed from the radius of the line (`seg+0C8h`), so the radius of a fitted line should not be
+larger than the original radius at the same place.
