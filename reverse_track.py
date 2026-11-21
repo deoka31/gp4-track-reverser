@@ -11,13 +11,14 @@ Options:
     --gp4 FOLDER    GP4 folder containing Circuits\\ (default: searched above this folder)
     --src FOLDER    folder with the untouched original files (default: Circuits, then Circuits* folders)
     --out FOLDER    output folder (default: .\\reversed)
+    --rotate-start 0|1   move the start line back by one segment (default: automatic, see docs/METHOD.md)
 
 The output is never written to the Circuits folder. For the 17 original tracks the racing line comes ready-made from
 the folder racing_lines\\. For other tracks (mods) it is computed: this needs "pip install unicorn" and GP4.exe.
 """
 import sys, os, re, json, glob, hashlib, argparse
 sys.dont_write_bytecode = True
-__version__ = '0.9.3-beta'
+__version__ = '0.9.4-beta'
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import gp4track as gt
@@ -119,16 +120,20 @@ def patch_anim_wad(gp4, outdir, sides):
     return True
 
 
-def reverse_one(src, gp4, outdir):
+def reverse_one(src, gp4, outdir, rotate=None):
     raw = open(src, 'rb').read()
     name = os.path.basename(src)
     j0 = gt.dump(raw)
     if gt.build(json.loads(json.dumps(j0))) != raw:
         print('  ERROR: the file cannot be rebuilt byte-identically - skipped')
         return False
-    j1 = q.reverse_json(j0)
+    if rotate is None:
+        rotate = q.auto_rotation(j0)
+    print('  start line: %s' % ('moved back by one segment (the short closing segment of the original stays at the end of the lap)'
+                              if rotate else 'unchanged (closing segment of the original is normal)'))
+    j1 = q.reverse_json(j0, rotate)
     j1.pop('_line_report', None)
-    secs = load_line(raw, name)
+    secs = load_line(raw, name) if rotate == 1 else None    # the ready-made lines are computed for the moved start line
     how = 'ready-made from racing_lines\\'
     if secs is None:
         try:
@@ -137,7 +142,7 @@ def reverse_one(src, gp4, outdir):
             if not os.path.isfile(exe):
                 raise FileNotFoundError(exe)
             print('  Computing the racing line (a few minutes) ...')
-            _, secs, st = U.compute_line(j0, exe, q)
+            _, secs, st = U.compute_line(j0, exe, q, rotate=rotate)
             how = 'computed (%d sections, mean deviation %.0f, outside the track: %d segments)' % (
                 st['sections'], st['mean_error'], len(st['outside']))
         except ImportError:
@@ -170,6 +175,8 @@ def main(argv):
     ap.add_argument('--gp4', default=find_gp4())
     ap.add_argument('--out', default=os.path.join(HERE, 'reversed'))
     ap.add_argument('--src', default=None, help='folder with the untouched original S1CTnn.DAT files')
+    ap.add_argument('--rotate-start', type=int, default=None, choices=(0, 1), metavar='0|1',
+                    help='move the start line back by one segment (1) or not (0); default: automatic (1 for all 17 original tracks)')
     ap.add_argument('--version', action='version', version=__version__)
     a = ap.parse_args(argv[1:])
     print('GP4 track reverser %s' % __version__)
@@ -184,7 +191,7 @@ def main(argv):
         if src is None:
             print('  not found')
             continue
-        res = reverse_one(src, a.gp4, a.out)
+        res = reverse_one(src, a.gp4, a.out, a.rotate_start)
         if res:
             ok += 1
             m = re.match(r'S1CT(\d\d)', os.path.basename(src), re.I)     # slot number, also for mod files

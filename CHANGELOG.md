@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.4-beta
+- **Jump at the finish line fixed** (first reported on 03 Interlagos; confirmed gone in the game on 03 Interlagos, 02 Sepang
+  and 04 Imola; pit stops still work). Cause: every original track ends with a closing segment that is short and runs
+  backwards (the last point lies up to 4.6 m *behind* point 0, the ring overlaps itself there). Mirroring moved that segment
+  right behind the start line. The reversed ring is now renumbered by one segment, so the short segment stays at the
+  end of the lap as in the original.
+- Side effect: the start line (and the starting grid with it) moves back by the length of that segment, 0.6-4.6 m depending on the track.
+  The tool does this automatically for the 17 originals; for other tracks only if their closing segment is short
+  or backwards (`--rotate-start 0|1` overrides).
+- The racing lines in `racing_lines\` were computed again for the new numbering (same method as before).
+- Removed the experimental `--smooth-height-seam` option of the unreleased test branch (the height step was a symptom, not the cause).
+- Fixed: the target lateral offset used for the racing line fit could be a fractional number (only affects computed lines).
+
 ## 0.9.3-beta
 - No change to the output: all 17 reversed tracks are byte-identical to 0.9.2-beta.
 - Code comments, docstrings and messages are English now.

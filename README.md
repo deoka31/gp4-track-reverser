@@ -3,7 +3,7 @@
 Turns a **Grand Prix 4** track file (`S1CTnn.DAT`) around so that the circuit is driven in the opposite direction.
 Works for the 17 original tracks and, with a computed racing line, for other track files.
 
-> **Status: 0.9.3 beta.** All 17 original tracks start and can be driven, but each has small physical or visual
+> **Status: 0.9.4 beta.** All 17 original tracks start and can be driven, but each has small physical or visual
 > problems. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md). Please report what you find (see below).
 
 No game files are included. You need your own copy of Grand Prix 4.
@@ -35,7 +35,8 @@ The result is `reversed\S1CTnn.DAT`. **Nothing is ever written to `Circuits\`.**
 ## How it works (short)
 
 The track file contains the main track, the pit lane, the start grid side, the cameras and the racing line (the line the
-computer cars follow). The tool mirrors all of them. The racing line cannot simply be mirrored: it is a chain of
+computer cars follow). The tool mirrors all of them. Because every original track has an overlapping closing segment, the start line of the reversed track is moved back
+by one segment (about 1-5 m; see [docs/METHOD.md](docs/METHOD.md)). The racing line cannot simply be mirrored: it is a chain of
 sections in which every section continues where the previous one stopped. It is therefore re-fitted by running the
 game's own routine in an emulator. Details: [docs/METHOD.md](docs/METHOD.md).
 

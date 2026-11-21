@@ -43,6 +43,26 @@ join (`_align_pit_heading`). The main track `hd` is deliberately left alone: cha
 game crash at load. `heading_check()` reports the largest deviation between integrated and absolute pit heading in
 degrees (about 0 for the originals and for tool output, printed by `reverse_track.py`).
 
+## Closing segment and start line (0.9.4)
+
+Every original ring has a closing segment (last point -> point 0) that is not like the others: normal segments step
+262144 units along the heading, the closing segment steps *backwards* by 41k to 247k units (point 0 lies inside the
+last normal segment, so the ring overlaps itself by 0.6 to 4.6 m). GP4 Builder shows this as an overlap at the end of
+the ring. The game copes with it at the end of the lap.
+
+Plain mirroring puts that segment between point 0 and point 1, directly behind the start line: the car crosses the line and
+drives onto a segment that jumps back by up to 4 m (visible as a jump at the finish line and as odd computer car lines
+in the first segments; worst on 02 Sepang and 03 Interlagos). GP4 Builder additionally shows a gap before sector 0 (it
+does not draw the wrap segment, which is a normal segment now).
+
+Fix: after mirroring, the arrays of the main ring are renumbered by one segment (`rotate_ring`) so that the short
+segment is the closing one again. Everything that is indexed by segment moves with it: width/bank/boundary values, kerb
+groups, pit joins (86/87), the DE/DF range, cameras, racing line sections, start position, heading and gradient in the
+track header. The start line therefore moves back by the length of the short segment. The first `hd` values of the
+ring change with the numbering; this works (changing `hd[0]` by hand to close the heading error is what crashed the
+game earlier). `auto_rotation()` decides: rotate when the closing step is below 0.9 of a normal step and no kerb would
+start at the line.
+
 ## Racing line
 
 The racing line is stored as sections. The game runs a small state machine over the track segments (radius, arc centre,
@@ -57,8 +77,8 @@ The tool:
 
 Where the fit would diverge (tight street circuits) a section with start values resets the state.
 
-For the 17 original tracks the result is delivered in `racing_lines\S1CTnn.json` and used if the SHA-1 of the source file
-matches.
+For the 17 original tracks the result is delivered in `racing_lines\S1CTnn.json` (computed for the moved start line)
+and used if the SHA-1 of the source file matches and the start line is moved.
 
 ## Not stored in the track file
 

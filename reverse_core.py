@@ -831,17 +831,17 @@ def pieces_to_sections(pieces, N, first_lat, first_head):
 # ---------------------------------------------------------------------------
 # Cameras: 19 words per record (see docs/formats/circuit-dat.md in the gp4-decomp project)
 
-def reverse_cameras(cams, N):
+def reverse_cameras(cams, N, shift=0):
     out = []
     for h in cams:
         w = list(struct.unpack('<19H', bytes.fromhex(h)))
         p = w[0] & 0x3FFF
         sw = w[5] & 0x3FFF
         L = p - sw                                       # distance camera - switch point stays
-        w[0] = (w[0] & 0xC000) | ((N - 1 - p) % N)
+        w[0] = (w[0] & 0xC000) | ((N - 1 - p - shift) % N)
         w[1] = (-s16(w[1])) & 0xFFFF
-        w[3] = (w[3] & 0xC000) | ((N - 1 - (w[3] & 0x3FFF)) % N)
-        w[5] = (w[5] & 0xC000) | ((N - 1 - p - L) % N)
+        w[3] = (w[3] & 0xC000) | ((N - 1 - (w[3] & 0x3FFF) - shift) % N)
+        w[5] = (w[5] & 0xC000) | ((N - 1 - p - L - shift) % N)
         out.append(w)
     out.sort(key=lambda w: w[5] & 0x3FFF)
     return [struct.pack('<19H', *w).hex() for w in out]
@@ -853,7 +853,49 @@ def reverse_cameras(cams, N):
 PIT_SWAP = {'9B': '9E', '9E': '9B', '9F': 'A0', 'A0': '9F', '96': '97', '97': '96', '89': 'F1', 'F1': '89'}
 
 
-def reverse_json(j):
+def closing_step(j0):
+    """Along-track step of the closing segment (last point -> point 0) of an original ring in units of the median
+    segment step. The 17 original tracks all have a value below 0: point 0 lies *behind* the last point."""
+    mg = split_groups(j0['main_stream'])
+    T = read_track(mg, True)
+    n = T['N']
+    P = [(d32(a[0], a[1]), d32(a[4], a[5])) for a in T['F6']]
+    steps = []
+    for k in range(n):
+        m = (k + 1) % n
+        h = (T['H'][k] + s32(T['H'][m] - T['H'][k]) // 2) * 2 * math.pi / 2 ** 32
+        steps.append((P[m][0] - P[k][0]) * math.sin(h) + (P[m][1] - P[k][1]) * math.cos(h))
+    med = sorted(steps[:-1])[(n - 1) // 2]
+    return steps[-1] / med if med else 1.0
+
+
+def auto_rotation(j0):
+    """1 if the reversed ring should be renumbered by one segment, else 0.
+    Needed when the original closing segment is short or runs backwards: mirrored, that segment would sit right behind
+    the start line (sector 0). Not possible if a (mirrored) kerb starts at the start line."""
+    if closing_step(j0) >= 0.9:
+        return 0
+    try:
+        reverse_json(j0, 1)
+    except ValueError:
+        return 0
+    return 1
+
+
+def rotate_ring(R, k):
+    """Renumber the ring of the reversed track so that point k becomes point 0 (see docs/METHOD.md, start line)."""
+    n = R['N']
+    for key in ('F6', 'H', 'G', 'F7', 'hd', 'gd', 'bit0', 'flags', 'w3', 'secn', 'Wn', 'Wp', 'Bk', 'E', 'CA'):
+        R[key] = R[key][k:n] + R[key][:k]
+    kerbs = []
+    for (gi, c, a) in R['kerbs']:
+        if gi - k < 0:
+            raise ValueError('kerb at the start line cannot be rotated')
+        kerbs.append((gi - k, c, a))
+    R['kerbs'] = kerbs
+
+
+def reverse_json(j, rotate=0):
     j = copy.deepcopy(j)
     mg = split_groups(j['main_stream'])
     pg = split_groups(j['pit_stream'])
@@ -862,14 +904,18 @@ def reverse_json(j):
     TP = read_track(pg, False)
     RM = reverse_track_arrays(TM, True)
     RP = reverse_track_arrays(TP, False)
+    if rotate:
+        rotate_ring(RM, rotate)
     # heading of the reversed main track at the new pit entry (= old pit exit, command 87), as the game sums it
     _joins = [i for i, g in enumerate(mg) for c in g['cmds'] if c['cmd'] == '87']
     if _joins:
-        _hm = integrated_headings(RM, RM['H'][0])[(N - _joins[0]) % N]
+        _hm = integrated_headings(RM, RM['H'][0])[(N - _joins[0] - rotate) % N]
         _align_pit_heading(RM, RP, _hm)
     if TM.get('F4'):
         src = TM.get('E_end') or TM['F4']
         RM['F4'] = (swap_side(src[1], True), swap_side(src[0], False))
+        if rotate:
+            RM['F4'] = RM['E'][0]
 
     # Main track: special commands in group 0, pit lane joins
     g0 = mg[0]['cmds']
@@ -878,13 +924,13 @@ def reverse_json(j):
     for c in g0:
         if c['cmd'] in ('DE', 'DF'):
             a = c['args']
-            first[0].append(mk('DF' if c['cmd'] == 'DE' else 'DE', [N - a[1], N - a[0], a[2]]))
+            first[0].append(mk('DF' if c['cmd'] == 'DE' else 'DE', [(N - a[1] - rotate) % N, (N - a[0] - rotate) % N, a[2]]))
     ef = [c for c in g0 if c['cmd'] == 'EF'][0]['args']
     first[0].append(mk('EF', [lo16(RM['H'][0]), lo16(RM['G'][0]), ef[3], ef[2]]))
     for gi, g in enumerate(mg):
         for c in g['cmds']:
             if c['cmd'] in ('86', '87'):
-                first.setdefault((N - gi) % N, []).append(mk('87' if c['cmd'] == '86' else '86', c['args']))
+                first.setdefault((N - gi - rotate) % N, []).append(mk('87' if c['cmd'] == '86' else '86', c['args']))
     e8m = {}                                             # the starting grid stays behind the line
     for gi, g in enumerate(mg):
         items = [copy.deepcopy(c) for c in g['cmds'] if c['cmd'] == 'E8']
@@ -929,18 +975,26 @@ def reverse_json(j):
     th = j['track_header']
     th['start_heading'] = s16(th['start_heading'] + 0x8000)
     th['start_gradient'] = s16(-th['start_gradient'])
+    if rotate:
+        a0 = RM['F6'][0]
+        th['start_x'] = int(d32(a0[0], a0[1]) / 2048)
+        th['start_y'] = int(d32(a0[2], a0[3]) / 256)
+        th['start_z'] = int(d32(a0[4], a0[5]) / 2048)
+        th['start_heading'] = s16(RM['H'][0] >> 16)
+        th['start_gradient'] = s16(RM['G'][0] >> 16)
+        th['start_width'] = RM['Wn'][0]
     th['flags'] = s16(th['flags'] ^ 0x000A)
     j['file_names'] = [n.replace('gridleft', 'gridline') if 'gridleft' in n else n.replace('gridline', 'gridleft')
                        for n in j['file_names']]
 
     # Racing line
     pieces = racing_pieces(j['racing_line'], N)
-    rp = reverse_pieces(pieces, N)
+    rp = [((a - rotate) % N, n, R0, st) for (a, n, R0, st) in reverse_pieces(pieces, N)]
     geo = line_geometry(read_track(split_groups(j['main_stream']), True))
     j['racing_line'], j['_line_report'] = anchored_line(geo, rp, N)
 
     # Cameras
-    j['cameras_hex'] = reverse_cameras(j['cameras_hex'], N)
+    j['cameras_hex'] = reverse_cameras(j['cameras_hex'], N, rotate)
     return j
 
 
@@ -990,7 +1044,7 @@ def _marks_close(a, b):
 
 def selftest(j0, j1):
     """Reversing twice must give the original again."""
-    j2 = reverse_json(j1)
+    j2 = reverse_json(j1)             # j1 must come from reverse_json(j0, 0): the self test works on the unrotated ring
     ok = True
     for name in ('main_stream', 'pit_stream'):
         a, b = canon(j0[name], name == 'pit_stream', True), canon(j2[name], name == 'pit_stream', True)
@@ -1090,9 +1144,10 @@ def main(argv):
     if gt.build(json.loads(json.dumps(j0))) != raw:
         print('ERROR: the input file cannot be rebuilt byte for byte')
         return 1
-    j1 = reverse_json(j0)
+    j1 = reverse_json(j0, 0)
     print('Self test:')
     ok = selftest(j0, j1)
+    j1 = reverse_json(j0, auto_rotation(j0))      # the file that is written has the start line moved back if needed
     print('Geometry: heading-to-chord deviation old %.1f / new %.1f (per point, 65536 = full circle)'
           % (chord_error(j0), chord_error(j1)))
     print('Geometry: curvature deviation old %.3f / new %.3f' % (curvature_error(j0), curvature_error(j1)))

@@ -11,9 +11,12 @@ N = 884
 LASTP = 883
 
 
-def configure(exe, core, n):
-    global EXE, Q, N, LASTP
-    EXE, Q, N, LASTP = exe, core, n, n - 1
+ROT = 0
+
+
+def configure(exe, core, n, rotate=0):
+    global EXE, Q, N, LASTP, ROT
+    EXE, Q, N, LASTP, ROT = exe, core, n, n - 1, rotate
 
 
 def _unicorn():
@@ -243,7 +246,7 @@ patch_sim()
 
 def reversed_json(j0):
     Q.anchored_line = lambda g, p, n, chain=True: ([{'len': LASTP, 'flags': '5000', 'cx': 0, 'radius': 0}], {})
-    j1 = Q.reverse_json(j0)
+    j1 = Q.reverse_json(j0, 0, ROT)
     j1.pop('_line_report', None)
     return j1
 
@@ -255,7 +258,7 @@ def old_line(j0):
     lat, hd, _, _ = sim.run(j0['racing_line'])
     habs = [(T0['H0'][p] + hd[p]) & 0xFFFF for p in range(N)]
     # seg 883 is never written: interpolate
-    lat[LASTP] = (lat[LASTP - 1] + lat[0]) / 2.0
+    lat[LASTP] = int(round((lat[LASTP - 1] + lat[0]) / 2.0))
     habs[LASTP] = (habs[LASTP - 1] + s16(habs[0] - habs[LASTP - 1]) // 2) & 0xFFFF
     return T0, lat, habs
 
@@ -296,7 +299,7 @@ def target_kappa(Rold):
             p = LASTP - 1
         r = Rold[p]
         K[j] = (-1.0 / r) if r else 0.0
-    return K
+    return K[ROT:] + K[:ROT]
 
 
 def targets(lat, habs):
@@ -305,13 +308,13 @@ def targets(lat, habs):
         p = (N - j) % N
         Lt.append(-lat[p])
         Ht.append((habs[p] + 0x8000) & 0xFFFF)
-    return Lt, Ht
+    return Lt[ROT:] + Lt[:ROT], Ht[ROT:] + Ht[:ROT]
 
 
 def new_bounds(starts):
     b = set([0])
     for s in starts:
-        e = (N - s + 1) % N
+        e = (N - s + 1 - ROT) % N
         if 0 <= e < LASTP:
             b.add(e)
     return sorted(b)
@@ -437,9 +440,9 @@ def to_sections(chain, Lt0, Ht0, Lt_all=None, Ht_all=None):
 
 
 
-def compute_line(j0, exe, core, mu=0.6, lam=1.5, beam=5, log=print):
+def compute_line(j0, exe, core, mu=0.6, lam=1.5, beam=5, log=print, rotate=0):
     """j0: JSON of the ORIGINAL track (gp4track.dump). Returns (j1, sections, statistics) for the reversed track."""
-    configure(exe, core, len(core.read_track(core.split_groups(j0['main_stream']), True)['hd']))
+    configure(exe, core, len(core.read_track(core.split_groups(j0['main_stream']), True)['hd']), rotate)
     j1 = reversed_json(j0)
     T1 = track_from_json(j1, Q)
     T0, lat0, habs0 = old_line(j0)
