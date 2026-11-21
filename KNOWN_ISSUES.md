@@ -1,6 +1,6 @@
 # Known issues
 
-Status of version **0.9.5-beta**.
+Status of version **0.9.6-beta**.
 
 | # | Issue | Tracks | Status |
 |---|---|---|---|
@@ -10,8 +10,9 @@ Status of version **0.9.5-beta**.
 | 4 | Small physical and visual problems at places (e.g. computer cars brushing the edge, odd curb or wall pieces). | all 17 | open, please report places |
 | 5 | The racing line follows the mirrored original line only approximately: mean deviation 43-90 units (about 20-40 cm); a few segments lie slightly outside the asphalt (up to 1.4 times the half width). | all 17 | open, improvement planned |
 | 6 | Jump at the finish line (Interlagos, Sepang worst) and odd computer car lines behind the start. | all 17 | fixed in 0.9.4 (start line moved back by one segment); confirmed on 02, 03, 04. A very small remaining graphical blip at the line on 03 may be visible; not physical. |
-| 7 | 14 Spa: computer cars had trouble in the Bus Stop chicane (too fast into the second element, then over the kerb). Cause: the fitted racing line had a larger radius there than the original (about 10150 instead of 9000), and the game derives the AI corner speed from the line radius. Fixed by setting the radius of segments 76-84 to 9500 (confirmed in the game: the cars now take the chicane). | 14 | fixed in 0.9.6 (not released yet) |
+| 7 | 14 Spa: computer cars had trouble in the Bus Stop chicane (too fast into the second element, then over the kerb). Cause: the fitted racing line had a larger radius there than the original (about 10150 instead of 9000), and the game derives the AI corner speed from the line radius. Fixed by setting the radius of segments 76-84 to 9500 (confirmed in the game: the cars now take the chicane). | 14 | fixed in 0.9.6 |
 | 8 | 07 Monaco: cars run with two wheels outside the track in some corners (graphical); at the tight hairpin there is sometimes physical contact with the wall. | 07 | open |
+| 9 | Mod tracks: the racing line is computed, and its radius in a corner can be larger than in the original line. The computer cars take the corner faster then (this was the cause of the Spa problem). Not predictable; found only by testing. | mod tracks | open; the line of an affected corner can be adjusted by hand as was done for 14 Spa |
 
 Values that live in the game's EXE and not in the track file (for example the pit lane time to the first box) stay
 those of the original driving direction. They cannot be changed by this tool.

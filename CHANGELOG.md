@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.6-beta (not released yet)
+## 0.9.6-beta
 - Fixed: 14 Spa Bus Stop chicane. The computer cars were too fast into the second element and flew over the kerb.
   The game derives the AI corner speed from the radius of the racing line; the fitted line had a radius of about 10150
   there instead of 9000. The line of Spa now uses 9500 for segments 76-84 (confirmed in the game).
@@ -8,6 +8,7 @@
 - New: `corner_check.py` runs the game's own corner table builder (`RLCorner_BuildCornerTable_Main`) in the emulator on a
   computed racing line. A line whose corner ends exactly on its last apex makes the game crash while the track is compiled
   (division by zero at 0x0043F7D8). `reverse_track.py` now refuses to write such a file. All 17 delivered racing lines pass.
+- Output for the other 16 original tracks is byte-identical to 0.9.5.
 
 ## 0.9.5-beta
 - Fixed: computing the racing line for mod tracks (and for any run with `--rotate-start 0`) failed with

@@ -18,7 +18,7 @@ the folder racing_lines\\. For other tracks (mods) it is computed: this needs "p
 """
 import sys, os, re, json, glob, hashlib, argparse
 sys.dont_write_bytecode = True
-__version__ = '0.9.5-beta'
+__version__ = '0.9.6-beta'
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import gp4track as gt
